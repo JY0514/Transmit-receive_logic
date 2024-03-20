@@ -33,19 +33,19 @@ def send():
 
     for record in result:
         rider_id, oper_id, start_time, end_time, address, request_company = record
-        # print(record)
         now = datetime.now()
         r_date = now.strftime('%Y-%m-%d %H:%M:%S')
 
         end_time_value = 'NULL' if end_time is None else f"'{end_time}'"
         insu_id = f"TEST{insu_number:05}"
 
-        sqlss = (
-            f"INSERT INTO logic.r_info (rider_id, oper_id, start_time, end_time, address, request_company, d_status, insurance_id, r_date, u_date)"
-            f" SELECT '{rider_id}', '{oper_id}', '{start_time}', {end_time_value}, '{address}', '{request_company}', "
-            f" CASE WHEN {end_time_value} IS NOT NULL THEN 'complete' ELSE 'driving' END, '{insu_id}','{r_date}','{r_date}';")
+        insert_query = f"""
+        INSERT INTO logic.r_info (group_id, rider_id, oper_id, start_time, end_time, address, request_company, d_status, insurance_id, r_date, u_date)
+        SELECT CONCAT('group', '{rider_id}') AS group_id, '{rider_id}', '{oper_id}', '{start_time}', {end_time_value}, '{address}', '{request_company}', 
+        CASE WHEN {end_time_value} IS NOT NULL THEN 'complete' ELSE 'driving' END, '{insu_id}', '{r_date}', '{r_date}';
+        """
 
-        cursor.execute(sqlss)
+        cursor.execute(insert_query)
         conn.commit()
         insu_number += 1
 
@@ -61,17 +61,23 @@ def recep():
     print(result)
 
     # 라이더마다 체크를 해줘야함
-    sql2 = " SELECT rider_id, MIN(start_time) AS earliest_start_time, MAX(end_time) AS latest_end_time FROM  logic.r_info GROUP BY rider_id;"
+    sql2 = " SELECT rider_id, group_id,MIN(start_time) AS earliest_start_time, MAX(end_time) AS latest_end_time FROM  logic.r_info GROUP BY rider_id;"
     cursor.execute(sql2)
     result2 = cursor.fetchall()
-
+    now = datetime.now()
+    r_date = now.strftime('%Y-%m-%d %H:%M:%S')
     # 결과 출력
     for row in result2:
         print(row)
-        #  row 데이터를 group_info 에 넣어줘야함
-        sql3 = "insert into "
+        rider_id = row[0]
+        group_id = row[1]
+        start_time = row[2]
+        end_time = row[3]
+        sql3 = ("insert into logic.group_info ( group_id, rider_id, start_time, end_time, r_date, u_date) "
+                f"values('{group_id}','{rider_id}' , '{start_time}','{end_time}','{r_date}',{r_date})")
         cursor.execute(sql3)
-        result3 = cursor.fetchall()
+
+    connection.commit()
 
     # 테이블의 각 라이더의 데이터가 있는지 확인
 
