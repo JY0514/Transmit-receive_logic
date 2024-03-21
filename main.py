@@ -129,10 +129,10 @@ def recep():
             cursor.execute(sql12)
             sql12result = cursor.fetchall()
 
-            sql13 = f""
+            # end_count는 r_info 테이블에서 starttime endtime이 둘다 존재할때 1씩 늘어나게해야함
+            sql13 = f"select * from r_info "
             cursor.execute(sql13)
             sql13result = cursor.fetchall()
-            # end_count는 r_info 테이블에서 starttime endtime이 둘다 존재할때 1씩 늘어나게해야함
 
 
             # groupcount는 r_info start_count와 end_count가 둘다 동일한 숫자일때 1씩 생김
