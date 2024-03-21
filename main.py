@@ -1,11 +1,9 @@
 import pymysql
 from datetime import datetime
-import schedule
 
 def dbconnect():
-    conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='localDB', charset='utf8')
+    conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
     return conn
-
 
 try:
     connection = dbconnect()
@@ -27,7 +25,6 @@ def send():
     result = cursor.fetchall()
     data_count = len(result)
     print(f"데이터 갯수: {data_count}")
-
 
     insu_number = 1
 
@@ -51,44 +48,53 @@ def send():
 
     # 데이터베이스 연결 종료
     conn.close()
-    
+
 #     수신시작 로직
 def recep():
     conn = dbconnect()
     cursor = conn.cursor()
     cursor.execute("SELECT group_id,rider_id, start_time, end_time, r_date, u_date FROM logic.r_info")
-    result = cursor.fetchall()
-    print(result)
 
-    # 라이더마다 체크를 해줘야함
     sql2 = " SELECT rider_id, group_id,MIN(start_time) AS earliest_start_time, MAX(end_time) AS latest_end_time FROM  logic.r_info GROUP BY rider_id;"
     cursor.execute(sql2)
     result2 = cursor.fetchall()
     now = datetime.now()
     r_date = now.strftime('%Y-%m-%d %H:%M:%S')
-    # 결과 출력
     for row in result2:
-        print(row)
+        # print(row)
         rider_id = row[0]
         group_id = row[1]
         start_time = row[2]
         end_time = row[3]
         sql3 = ("insert into logic.group_info ( group_id, rider_id, start_time, end_time, r_date, u_date) "
-                f"values('{group_id}','{rider_id}' , '{start_time}','{end_time}','{r_date}',{r_date})")
+                f"values('{group_id}','{rider_id}' , '{start_time}','{end_time}','{r_date}','{r_date}')")
         cursor.execute(sql3)
 
-    connection.commit()
+    conn.commit()
 
-    # 테이블의 각 라이더의 데이터가 있는지 확인
+    print(group_id)
+    sql_group = f"SELECT * FROM logic.group_info WHERE group_id = '{group_id}'"
+    cursor.execute(sql_group)
+    g_data = cursor.fetchall()
+    print(g_data)
+
+    if not g_data:
+        print('데이터가 존재하지 않음')
+
+    else:
+        print("데이터 존재함")
+        sql_update = (f"UPDATE logic.group_info gi SET gi.start_time = (SELECT MAX(ri.start_time)"
+                      f" FROM r_info ri WHERE ri.rider_id = gi.rider_id),"
+                      f" gi.end_time = (SELECT MAX(ri.end_time) FROM r_info ri WHERE ri.rider_id = gi.rider_id), gi.u_date = NOW()"
+                      f" WHERE gi.group_id = '{group_id}'")
+    cursor.execute(sql_update)
+    conn.commit()
 
 # 없는 경우에 r_info 테이블에서 그 라이더의 정보를 가져와서 운행데이터를 추가해야한다.
 
 # 그리고 보험사 전용 call_id 를 생성하면서 정보를 업데이트하고
 
 # 업데이트 완료된 데이터를 call 테이블에insert한다.
-
-
-
 
 
 send()
@@ -120,5 +126,3 @@ recep()
 # groupall_info에 최종 데이터를 저장한다.
 
 #     그룹 수신에서 사용할 코드
-
-
