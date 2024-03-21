@@ -129,16 +129,23 @@ def recep():
             cursor.execute(sql12)
             sql12result = cursor.fetchall()
 
+            sql13 = f""
+            cursor.execute(sql13)
+            sql13result = cursor.fetchall()
+            # end_count는 r_info 테이블에서 starttime endtime이 둘다 존재할때 1씩 늘어나게해야함
+
+
+            # groupcount는 r_info start_count와 end_count가 둘다 동일한 숫자일때 1씩 생김
+
             for row in sql12result:
                 print("넘어왔음")
                 total_driving_time = row[1]
                 formatted_time = str(total_driving_time)
 
-            if result_count == 0:
-                sql222 = "INSERT INTO logic.group_all (rider_id, start_count, r_date,u_date, driving_time) VALUES (%s, %s, %s,NOW(), %s)"
-                cursor.execute(sql222, (rider_id, start_count, r_dates, formatted_time))
-
-
+                if result_count == 0:
+                    sql222 = "INSERT INTO logic.group_all (rider_id, start_count, r_date,u_date, driving_time) VALUES (%s, %s, %s,NOW(), %s)"
+                    cursor.execute(sql222, (rider_id, start_count, r_dates, formatted_time))
+                    print(formatted_time)   #다 동일함
         conn.commit()
 
 send()
