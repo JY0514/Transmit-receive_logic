@@ -1,6 +1,5 @@
 import pymysql
 from datetime import datetime
-from datetime import timedelta
 import schedule
 import time
 
@@ -19,7 +18,7 @@ except Exception as e:
     print("DB 접속 중 오류가 발생 : ", str(e))
 
 
-# 송신 로직
+# 송신 로직 건들지 마셈
 def send():
     conn = dbconnect()
     cursor = conn.cursor()
@@ -76,9 +75,14 @@ def recep():
         cursor.execute("SELECT TIMESTAMPDIFF(MINUTE, %s, %s)", (start_time, end_time))
         c_operating_minutess = cursor.fetchone()[0]
         c_operating_minutes = c_operating_minutess if c_operating_minutess is not None else 0
+        c_operating = end_time - start_time
+        time_difference_str = str(c_operating)
+        if "day" in time_difference_str:
+            # "일" 정보를 제거하고 필요한 형식으로 변환하는 코드 추가
+            pass
 
         # 분당 19원으로 계산
-        d_amount = c_operating_minutes * 19 + "원"
+        d_amount = c_operating_minutes * 19
 
         # group_info 테이블에 데이터 삽입
         sql3 = """
@@ -90,7 +94,7 @@ def recep():
         );
         """
         cursor.execute(sql3,
-                       (c_operating_minutes, group_id, rider_id, start_time, end_time, r_date, r_date, group_id,
+                       (time_difference_str, group_id, rider_id, start_time, end_time, r_date, r_date, group_id,
                         rider_id))
         conn.commit()
 
@@ -109,7 +113,7 @@ def recep():
             WHERE rider_id = %s
         );
         """
-        cursor.execute(sql33, (c_operating_minutes, rider_id, r_date, r_date, rider_id))
+        cursor.execute(sql33, (time_difference_str, rider_id, r_date, r_date, rider_id))
         conn.commit()
 
         # 기본적으로 end_count 0으로 입력
@@ -121,11 +125,30 @@ def recep():
         cursor.execute(ql2_update, (rider_id,))
         conn.commit()
 
+        # start_count입력
+        sql = f"SELECT  COUNT(oper_id) AS start_count, rider_id  FROM logic.r_info GROUP BY rider_id;"
+        cursor.execute(sql)
+        conn.commit()
+        result_d = cursor.fetchall()
+
+        for tuple in result_d:
+            start_count = tuple[0]
+            rider_ids = tuple[1]
+            print(start_count)
+            # start_time이 몇개 인지 확인한 결과를 group_all 테이블에 업데이트
+            sql2_update = f"""
+                                 update group_all 
+                                  set start_count  = '{start_count}'
+                                  where group_all.rider_id = '{rider_ids}'
+                              """
+            cursor.execute(sql2_update)
+            conn.commit()
+
         # end_count 내용 업데이트
         ql3_update = """
         SELECT COUNT(*), rider_id
         FROM r_info
-        WHERE start_time IS NOT NULL AND end_time IS NOT NULL
+        WHERE end_time 
         GROUP BY rider_id;
         """
         cursor.execute(ql3_update)
@@ -142,10 +165,14 @@ def recep():
             # group_all 테이블에 group_count 계산해서 업데이트
             # 시작 카운트와 종료 카운트가 내용이 동일하다면 그룹 카운트도 동일한 내용이여야함
             sql4 = """
-            UPDATE group_all
-            SET group_count = end_count
-            WHERE start_count = end_count AND rider_id = %s
+                   UPDATE group_all
+            SET group_count = CASE
+                                WHEN start_count = end_count THEN end_count
+                                ELSE end_count
+                              END
+            WHERE rider_id = %s;
             """
+
             cursor.execute(sql4, (rider_id,))
             conn.commit()
 
