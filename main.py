@@ -7,7 +7,6 @@ def dbconnect():
     conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
     return conn
 
-
 try:
     connection = dbconnect()
     if connection:
@@ -16,7 +15,6 @@ try:
         print("DB 접속 실패")
 except Exception as e:
     print("DB 접속 중 오류가 발생 : ", str(e))
-
 
 # 송신 로직 건들지 마셈
 def send():
@@ -34,7 +32,6 @@ def send():
         now = datetime.now()
         r_date = now.strftime('%Y-%m-%d %H:%M:%S')
 
-        end_time_value = 'NULL' if end_time is None else f"'{end_time}'"
         insu_id = f"TEST{insu_number:05}"
         end_time_value = end_time if end_time is not None else '0000-00-00 00:00:00'
 
@@ -71,12 +68,12 @@ def recep():
 
     for row in result2:
         rider_id, group_id, start_time, end_time = row
-
         cursor.execute("SELECT TIMESTAMPDIFF(MINUTE, %s, %s)", (start_time, end_time))
         c_operating_minutess = cursor.fetchone()[0]
         c_operating_minutes = c_operating_minutess if c_operating_minutess is not None else 0
         c_operating = end_time - start_time
         time_difference_str = str(c_operating)
+
         if "day" in time_difference_str:
             # "일" 정보를 제거하고 필요한 형식으로 변환하는 코드 추가
             pass
@@ -97,7 +94,6 @@ def recep():
                        (time_difference_str, group_id, rider_id, start_time, end_time, r_date, r_date, group_id,
                         rider_id))
         conn.commit()
-
 
         # group_info에서 총 운행 시간에 대한 가격 업데이트
         update_query = "UPDATE logic.group_info SET d_amount = %s WHERE rider_id = %s AND group_id = %s"
@@ -134,7 +130,6 @@ def recep():
         for tuple in result_d:
             start_count = tuple[0]
             rider_ids = tuple[1]
-            print(start_count)
             # start_time이 몇개 인지 확인한 결과를 group_all 테이블에 업데이트
             sql2_update = f"""
                                  update group_all 
@@ -172,13 +167,10 @@ def recep():
                               END
             WHERE rider_id = %s;
             """
-
             cursor.execute(sql4, (rider_id,))
             conn.commit()
 
     conn.close()
-
-
 
 def job():
     print("5분뒤에 다시 실행됩니다.")
