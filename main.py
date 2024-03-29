@@ -104,11 +104,12 @@ def reception():
                 r_date = now.strftime('%Y-%m-%d %H:%M:%S')
                 insu_id = f"TEST{insu_number:05}"
                 end_time_value = end_time if end_time is not None else '0000-00-00 00:00:00'
+                u_date = datetime.now()
 
                 insert_query = f"""
                            INSERT INTO logic.r_info ( oper_id, rider_id, start_time, end_time, address, request_company, d_status, insurance_id, r_date, u_date)
                             SELECT  '{oper_id}','{rider_id}', '{start_time}', '{end_time_value}', '{address}', '{request_company}',
-                            CASE WHEN '{end_time_value}' != '0000-00-00 00:00:00' THEN 'complete' ELSE 'driving' END, '{insu_id}', '{r_date}', '{r_date}'
+                            CASE WHEN '{end_time_value}' != '0000-00-00 00:00:00' THEN 'complete' ELSE 'driving' END, '{insu_id}', '{r_date}', '{u_date}'
                             WHERE NOT EXISTS (
                                 SELECT 1 FROM logic.r_info
                                 WHERE rider_id = '{rider_id}' AND oper_id = '{oper_id}'
@@ -118,11 +119,12 @@ def reception():
                 conn.commit()
                 insu_number += 1
 
-        else: # 수신(운행종료, 그룹핑)
-            print('else')
-            # 운행종료가 된게 확인되면 group_id를 입력해준다(같은 라이더 중에서 배달 시간이 겹치는 부분이 있으면 group_id로 묶는다)
+        else: #  state == 'end':
+            print('수신(운행종료, 그룹핑)')
+            # group id 나중에 넣어줘야함 종료 시간까지 다 나왔을때 (그래서 state == end일때 구한다.)
+            # group_id를 구한다.(같은 라이더 중에서 배달 시간이 겹치는 부분이 있으면 group_id로 묶는다)
             sql_group_id = f"""
-                 SELECT rider_id , oper_id , start_time , end_time , CONCAT( a.rider_id, a.oper_id) AS group_id
+                 SELECT rider_id, end_time ,CONCAT('callID_',a.rider_id, a.oper_id) AS group_id, start_time
                  FROM logic.s_info a
                  WHERE EXISTS (
                      SELECT 1
@@ -134,141 +136,112 @@ def reception():
                  """
             cursor.execute(sql_group_id)
             conn.commit()
-            result = cursor.fetchall()
+            results = cursor.fetchall()
 
-            for row in result:
-                rider_id, oper_id, start_time, end_time, group_id = row
-                update_group = f"""
-                update logic.r_info
-                SET group_id = '{group_id}'
-                WHERE oper_id = '{oper_id}'  
+            # 앞에서 구한 group_id를 r_info에 업데이트
+            for row in results:
+                rider_id, end_time, group_id, start_time = row
+                sql_update_groupid = f"""
+               UPDATE logic.r_info SET group_id = %s WHERE rider_id = %s and end_time = %s and start_time = %s
                 """
-                cursor.execute(update_group)
+                cursor.execute(sql_update_groupid,(group_id, rider_id, end_time, start_time) )
                 conn.commit()
 
-            # rider_id와 group_id별로 최소 start_time과 최대 end_time 가져온다
-            sql2 = """
-               SELECT rider_id, group_id, MIN(start_time) AS earliest_start_time, MAX(end_time) AS latest_end_time, r_date
-               FROM logic.r_info
-               GROUP BY rider_id, group_id;
-               """
-            cursor.execute(sql2)
-            result2 = cursor.fetchall()
-            print(result2)
+            # d_status == complete 일 경우에만 group_info해준다 (배달 완료된 건에 대해서만)
+            sql = f"""
+            select group_id, rider_id, start_time, end_time,r_date  from logic.r_info where r_info.d_status = 'complete'
+            """
+            cursor.execute(sql)
+            conn.commit()
+            result = cursor.fetchall()
+            for record in result:
+                group_id, rider_id, start_time, end_time, r_date = record
+                if record[0] is not None:
+                    c_operating = end_time - start_time
+                    total_minutes = c_operating.days * 1440 + c_operating.seconds / 60
+                    d_amount = total_minutes * 19
+                    u_date = datetime.now()
 
-            # 여기서 계속 오류가 생김
-            for row in result2:
-                print("result2 넘어옴")
-                rider_id, group_id, start_time, end_time,r_date = row
-                print(row)
-                cursor.execute("SELECT TIMESTAMPDIFF(MINUTE, %s, %s)", (start_time, end_time))
-                c_operating_minutess = cursor.fetchone()[0]
-                c_operating_minutes = c_operating_minutess if c_operating_minutess is not None else 0
-                default_date = datetime.min
-                try:
-                    end_times =  c_operating_minutess.datetime.strptime(end_time, '%Y-%m-%d %H:%M:%S')
-                except ValueError:
-                    # 유효하지 않은 날짜 값에 대한 예외 처리
-                    print("유효하지 않은 날짜 값입니다. 기본 날짜로 대체합니다.")
-                    end_time = default_date
+                    # group_info 테이블 데이터 삽입
+                    sql_info = f"""
+                                      INSERT IGNORE INTO logic.group_info (c_operating, d_amount,group_id, rider_id, start_time, end_time, r_date, u_date)
+                                      SELECT %s,%s, %s, %s, %s, %s, %s, %s
+                                      WHERE NOT EXISTS (
+                                          SELECT 1 FROM logic.group_info
+                                          WHERE group_id = %s 
+                                      );
+                                      """
+                    cursor.execute(sql_info,(c_operating, d_amount, group_id, rider_id, start_time, end_time, r_date, u_date, group_id))
+                    conn.commit()
 
-                print(end_times)
+                    # group_all 테이블에 데이터 삽입
+                    sql_all = f"""
+                           INSERT INTO logic.group_all (driving_time, rider_id, r_date, u_date, group_count)
+                           SELECT %s, %s, %s, %s, 0
+                           WHERE NOT EXISTS (
+                               SELECT 1 FROM logic.group_all
+                               WHERE rider_id = %s
+                           );
+                           """
+                    cursor.execute(sql_all, (c_operating, rider_id, r_date,u_date,  rider_id))
+                    conn.commit()
+                         # 기본적으로 end_count 0 입력
+                    ql2_update = """
+                           UPDATE group_all
+                           SET end_count = 0
+                           WHERE rider_id = %s
+                           """
+                    cursor.execute(ql2_update, (rider_id))
+                    conn.commit()
 
-                # 이제 연산 수행
-                c_operating = end_time - start_time
-                time_difference_str = str(c_operating)
+                    # start_count 데이터 입력
+                    sql = f"SELECT  COUNT(oper_id) AS start_count, rider_id  FROM logic.r_info GROUP BY rider_id;"
+                    cursor.execute(sql)
+                    conn.commit()
+                    result_d = cursor.fetchall()
 
-                #     # 분당 19원으로 계산
-                d_amount = c_operating_minutes * 19
+                    for tuple in result_d:
+                        start_count = tuple[0]
+                        rider_ids = tuple[1]
+                        # start_time이 몇개 인지 확인한 결과를 group_all 테이블 업데이트
+                        sql2_update = f"""
+                                                    update group_all
+                                                     set start_count  = '{start_count}'
+                                                     where group_all.rider_id = '{rider_ids}'
+                                                 """
+                        cursor.execute(sql2_update)
+                        conn.commit()
 
-                 # group_info 테이블 데이터 삽입
-                sql3 = """
-                   INSERT INTO logic.group_info (c_operating, group_id, rider_id, start_time, end_time, r_date, u_date)
-                   SELECT %s, %s, %s, %s, %s, %s, %s
-                   WHERE NOT EXISTS (
-                       SELECT 1 FROM logic.group_info
-                       WHERE group_id = %s AND rider_id = %s
-                   );
-                   """
-                cursor.execute(sql3,
-                               (c_operating_minutes, group_id, rider_id, start_time, end_time, r_date, r_date, group_id, rider_id,))
-                conn.commit()
-
-                # group_info 총 운행 시간에 대한 가격 업데이트
-                update_query = "UPDATE logic.group_info SET d_amount = %s WHERE rider_id = %s AND group_id = %s"
-                cursor.execute(update_query, (d_amount, rider_id, group_id))
-                conn.commit()
-
-                # group_all 테이블에 데이터 삽입
-                sql33 = """
-                   INSERT INTO logic.group_all (driving_time, rider_id, r_date, u_date, group_count)
-                   SELECT %s, %s, %s, %s, 0
-                   WHERE NOT EXISTS (
-                       SELECT 1 FROM logic.group_all
-                       WHERE rider_id = %s
-                   );
-                   """
-                cursor.execute(sql33, (time_difference_str, rider_id, r_date, r_date, rider_id))
-                conn.commit()
-                 # 기본적으로 end_count 0 입력
-                ql2_update = """
-                   UPDATE group_all
-                   SET end_count = 0
-                   WHERE rider_id = %s
-                   """
-                cursor.execute(ql2_update, (rider_id,))
-                conn.commit()
-
-            # start_count 데이터 입력
-                sql = f"SELECT  COUNT(oper_id) AS start_count, rider_id  FROM logic.r_info GROUP BY rider_id;"
-                cursor.execute(sql)
-                conn.commit()
-                result_d = cursor.fetchall()
-
-                for tuple in result_d:
-                    start_count = tuple[0]
-                    rider_ids = tuple[1]
-                    # start_time이 몇개 인지 확인한 결과를 group_all 테이블 업데이트
-                    sql2_update = f"""
-                                            update group_all
-                                             set start_count  = '{start_count}'
-                                             where group_all.rider_id = '{rider_ids}'
+                    ql3_update = """
+                                  SELECT COUNT(*), rider_id
+                                     FROM logic.r_info
+                                     WHERE end_time GROUP BY rider_id;
                                          """
-                    cursor.execute(sql2_update)
+                    cursor.execute(ql3_update)
                     conn.commit()
-
-                 # end_count 내용 업데이트
-                ql3_update = """
-                   SELECT COUNT(*), rider_id
-                   FROM r_info
-                   WHERE end_time
-                   GROUP BY rider_id;
-                   """
-                cursor.execute(ql3_update)
-                resultu = cursor.fetchall()
-
-                for row in resultu:
-                    end_count, rider_idss = row
-                    ql4_update = """
-                       UPDATE group_all SET end_count = %s WHERE rider_id = %s
-                       """
-                    cursor.execute(ql4_update, (end_count, rider_idss))
-                    conn.commit()
-                    # group_all 테이블에 group_count 계산해서 업데이트
-                    # 시작 카운트와 종료 카운트가 내용이 동일하다면 그룹 카운트도 동일한 내용이여야함
-                    sql4 = """
-                              UPDATE group_all
-                       SET group_count = CASE
-                                           WHEN start_count = end_count THEN end_count
-                                           ELSE end_count
-                                         END
-                       WHERE rider_id = %s;
-                       """
-                    cursor.execute(sql4, (rider_id,))
-                    conn.commit()
+                    resultu = cursor.fetchall()
+                    for row in resultu:
+                        end_count, rider_idss = row
+                        ql4_end_count = """
+                               UPDATE group_all SET end_count = %s WHERE rider_id = %s
+                               """
+                        cursor.execute(ql4_end_count, (end_count, rider_idss))
+                        conn.commit()
+                            # group_all 테이블에 group_count 계산해서 업데이트
+                            # 시작 카운트와 종료 카운트가 내용이 동일하다면 그룹 카운트도 동일한 내용이여야함
+                        sql4 = """
+                                      UPDATE group_all
+                               SET group_count = CASE
+                                                   WHEN start_count = end_count THEN end_count
+                                                   ELSE end_count
+                                                 END
+                               WHERE rider_id = %s;
+                               """
+                        cursor.execute(sql4, (rider_id,))
+                        conn.commit()
 
 
-# group id 나중에 넣어줘야함 종료 시간까지 다 나왔을때
+
 
 def job():
     print("5분뒤에 다시 실행됩니다.")
