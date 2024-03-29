@@ -240,15 +240,22 @@ def reception():
         cursor.execute(sql_update)
         conn.commit()
 
-
+        insu_number = 1
         # 6, 앞에서 구한 group_id를 r_info에 업데이트
         for row in results:
+            insu_id = f"TEST{insu_number:05}"
             rider_id, end_time, group_id, start_time = row
             sql_update_groupid = f"""
                 UPDATE logic.r_info SET group_id = %s WHERE rider_id = %s and end_time = %s and start_time = %s
                 """
             cursor.execute(sql_update_groupid, (group_id, rider_id, end_time, start_time))
             conn.commit()
+            up_insu = f"""
+                           update logic.r_info set insurance_id = '{insu_id}'
+                           """
+            cursor.execute(up_insu)
+            conn.commit()
+            insu_number += 1
 
         # 7. d_status == complete 일 경우에만 group_info해준다 (배달 완료된 건에 대해서만) / 운행시간 및 보험료 계산
         sql = f"""
@@ -257,21 +264,16 @@ def reception():
         cursor.execute(sql)
         conn.commit()
         result = cursor.fetchall()
-        insu_number = 1
+
         for row in result:
-            insu_id = f"TEST{insu_number:05}"
+
             group_id, rider_id, start_time, end_time, r_date = row
             if row[0] is not None:
                 c_operating = end_time - start_time
                 total_minutes = c_operating.days * 1440 + c_operating.seconds / 60
                 d_amount = total_minutes * 19
                 u_date = datetime.now()
-                up_insu = f"""
-                update logic.r_info set insurance_id = '{insu_id}'
-                """
-                cursor.execute(up_insu)
-                conn.commit()
-                insu_number += 1
+
 
                 # 고쳐야하는 부분
                 # 보험사 아이디, 배달 상태, group_all
