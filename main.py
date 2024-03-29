@@ -3,9 +3,11 @@ from datetime import datetime
 import schedule
 import time
 
+
 def dbconnect():
     conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
     return conn
+
 
 try:
     connection = dbconnect()
@@ -16,7 +18,8 @@ try:
 except Exception as e:
     print("DB 접속 중 오류가 발생 : ", str(e))
 
-def send():   #송신 로직
+
+def send():  # 송신 로직
     conn = dbconnect()
     cursor = conn.cursor()
 
@@ -57,7 +60,8 @@ def send():   #송신 로직
         cursor.execute(sql_end, (end_time_value, rider_id))
         conn.commit()
 
-# 수신 시작 로직
+
+# 수신 로직
 def reception():
     conn = dbconnect()
     cursor = conn.cursor()
@@ -66,7 +70,7 @@ def reception():
     data_count = len(result)
     print(f"데이터 갯수: {data_count}")
 
-    # 1. 송신
+    # start와 end 구분
     sql = f"""
         select
             rider_id,
@@ -91,13 +95,16 @@ def reception():
         rider_id, time, state = row
         if state == 'start':
             print('수신 운행시작')
-            #수신(운행시작)
+            # 수신(운행시작)
+            
+            # s_info에 데이터 조회
             sql_check = f"""select   *  from logic.s_info"""
             cursor.execute(sql_check)
             conn.commit()
             result = cursor.fetchall()
             insu_number = 1
-
+            
+            # r_info 데이터 입력
             for record in result:
                 rider_id, oper_id, start_time, end_time, address, request_company = record
                 now = datetime.now()
@@ -119,7 +126,7 @@ def reception():
                 conn.commit()
                 insu_number += 1
 
-        else: #  state == 'end':
+        else:  # state == 'end'
             print('수신(운행종료, 그룹핑)')
             # group id 나중에 넣어줘야함 종료 시간까지 다 나왔을때 (그래서 state == end일때 구한다.)
             # group_id를 구한다.(같은 라이더 중에서 배달 시간이 겹치는 부분이 있으면 group_id로 묶는다)
@@ -144,7 +151,7 @@ def reception():
                 sql_update_groupid = f"""
                UPDATE logic.r_info SET group_id = %s WHERE rider_id = %s and end_time = %s and start_time = %s
                 """
-                cursor.execute(sql_update_groupid,(group_id, rider_id, end_time, start_time) )
+                cursor.execute(sql_update_groupid, (group_id, rider_id, end_time, start_time))
                 conn.commit()
 
             # d_status == complete 일 경우에만 group_info해준다 (배달 완료된 건에 대해서만)
@@ -171,7 +178,8 @@ def reception():
                                           WHERE group_id = %s 
                                       );
                                       """
-                    cursor.execute(sql_info,(c_operating, d_amount, group_id, rider_id, start_time, end_time, r_date, u_date, group_id))
+                    cursor.execute(sql_info, (
+                        c_operating, d_amount, group_id, rider_id, start_time, end_time, r_date, u_date, group_id))
                     conn.commit()
 
                     # group_all 테이블에 데이터 삽입
@@ -183,9 +191,10 @@ def reception():
                                WHERE rider_id = %s
                            );
                            """
-                    cursor.execute(sql_all, (c_operating, rider_id, r_date,u_date,  rider_id))
+                    cursor.execute(sql_all, (c_operating, rider_id, r_date, u_date, rider_id))
                     conn.commit()
-                         # 기본적으로 end_count 0 입력
+
+                    # # 기본적으로 end_count 0 입력 (값이 없을 경우 입력 X)
                     ql2_update = """
                            UPDATE group_all
                            SET end_count = 0
@@ -203,7 +212,7 @@ def reception():
                     for tuple in result_d:
                         start_count = tuple[0]
                         rider_ids = tuple[1]
-                        # start_time이 몇개 인지 확인한 결과를 group_all 테이블 업데이트
+                        # start_time이 몇개 인지 확인한 위에서 받은 결과를 group_all 테이블 업데이트
                         sql2_update = f"""
                                                     update group_all
                                                      set start_count  = '{start_count}'
@@ -212,6 +221,7 @@ def reception():
                         cursor.execute(sql2_update)
                         conn.commit()
 
+                    # end_count랑  group_count업데이트하려고 불러옴
                     ql3_update = """
                                   SELECT COUNT(*), rider_id
                                      FROM logic.r_info
@@ -222,15 +232,18 @@ def reception():
                     resultu = cursor.fetchall()
                     for row in resultu:
                         end_count, rider_idss = row
+
+                        # group_all end_count업데이트
                         ql4_end_count = """
                                UPDATE group_all SET end_count = %s WHERE rider_id = %s
                                """
                         cursor.execute(ql4_end_count, (end_count, rider_idss))
                         conn.commit()
-                            # group_all 테이블에 group_count 계산해서 업데이트
-                            # 시작 카운트와 종료 카운트가 내용이 동일하다면 그룹 카운트도 동일한 내용이여야함
+
+                        # group_all 테이블에 group_count 계산해서 업데이트
+                        # 시작 카운트와 종료 카운트가 내용이 동일하다면 그룹 카운트도 동일한 내용이여야함
                         sql4 = """
-                                      UPDATE group_all
+                                UPDATE group_all
                                SET group_count = CASE
                                                    WHEN start_count = end_count THEN end_count
                                                    ELSE end_count
@@ -241,14 +254,13 @@ def reception():
                         conn.commit()
 
 
-
-
 def job():
     print("5분뒤에 다시 실행됩니다.")
     # send()
     reception()
 
-job()
+# 작업 실행
+job()   
 
 schedule.every(5).minutes.do(job)
 
