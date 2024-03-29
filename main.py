@@ -170,21 +170,15 @@ def reception():
     else:  # state == 'end'
         print('수신(운행종료, 그룹핑)')
         # 1. group_couont +1
-        sql_endcount = f"""
-             UPDATE logic.group_all SET end_count = 1 WHERE rider_id ='{rider_id}' ;
-            """
-        cursor.execute(sql_endcount)
-        conn.commit()
-
         # 3.4. start_count랑 end_count가 동일한지
         sql_allupdate = f"""
-                                   SELECT CASE
-                                   WHEN start_count = end_count THEN 1
-                                   ELSE 0
-                                   END AS 일치여부
-                            FROM group_all
-                            WHERE rider_id = %s;
-                                """
+                                         SELECT CASE
+                                         WHEN start_count = end_count THEN 1
+                                         ELSE 0
+                                         END AS 일치여부
+                                  FROM group_all
+                                  WHERE rider_id = %s;
+                                      """
 
         cursor.execute(sql_allupdate, (rider_id))
         conn.commit()
@@ -234,6 +228,18 @@ def reception():
         cursor.execute(sql_group_id)
         conn.commit()
         results = cursor.fetchall()
+
+        sql_endcount = f"""
+                   UPDATE logic.group_all SET end_count = 1 WHERE rider_id ='{rider_id}' ;
+                  """
+        cursor.execute(sql_endcount)
+        conn.commit()
+        sql_update = f"""
+                                   UPDATE logic.group_all SET group_count = 1 WHERE rider_id ='{rider_id}'
+                               """
+        cursor.execute(sql_update)
+        conn.commit()
+
 
         # 6, 앞에서 구한 group_id를 r_info에 업데이트
         for row in results:
