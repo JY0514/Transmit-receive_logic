@@ -123,7 +123,50 @@ def end():
     end_time11 = params['end_time']
     conn = dbconnect()
     cursor = conn.cursor()
-    
+
+    # 그룹아이디 생성
+    letters_set = string.ascii_letters
+    random_list = random.sample(letters_set, 3)
+    result = ''.join(random_list)
+    sql_group_id = f"""
+                  SELECT rider_id, end_time ,CONCAT('callID_','{result}') AS group_id, start_time
+                  FROM logic.r_info a
+                  WHERE EXISTS (
+                      SELECT 1
+                      FROM logic.r_info b
+                      WHERE a.rider_id != b.rider_id
+                      AND a.start_time < b.end_time        
+                  );      
+                  """
+    cursor.execute(sql_group_id)
+    conn.commit()
+    results = cursor.fetchall()
+
+    # 앞에서 구한 group_id를 r_info에 업데이트
+    for row in results:
+        rider_id, end_time, group_id, start_time = row
+
+        random_list = random.sample(string.ascii_letters, 3)
+        result = ''.join(random_list)
+        group_id = f'callID_{result}'
+
+        sqls = f"""
+        update logic.r_info set group_id = '{group_id}' where rider_id = '{rider_id}' 
+        """
+        cursor.execute(sqls)
+        conn.commit()
+
+        # Use DISTINCT or GROUP BY to avoid duplicate updates
+        sql_update_groupid = f"""
+           UPDATE logic.r_info AS a
+            LEFT JOIN (SELECT rider_id FROM logic.r_info WHERE group_id IS NOT NULL OR group_id != '') AS b
+            ON a.rider_id = b.rider_id
+            SET a.group_id = %s
+            WHERE b.rider_id IS NULL AND a.end_time = %s AND a.start_time = %s;
+        """
+        cursor.execute(sql_update_groupid, (group_id, end_time, start_time))
+        conn.commit()
+
     # end_time업데이트
     sql_endcount = f"""
                               UPDATE logic.r_info SET end_time = '{end_time11}' WHERE rider_id ="{rider_id11}" and oper_id = '{oper_id11}';
@@ -198,7 +241,6 @@ def end():
             conn.commit()
 
             # 보험사 아이디 업데이트
-
             insu_id = f"TEST{insu_number:05}"
             up_query2 = f"""
                                   update logic.r_info set insurance_id = '{insu_id}' where oper_id = %s
@@ -210,29 +252,19 @@ def end():
             # 5.다건 배송이 종료될때 그룹 아이디 생성
             # group id는 종료 시간까지 다 나왔을때 입력해줘야한다. (그래서 state == end일때 구한다.)
             # group_id 조회(같은 라이더 중에서 배달 시간이 겹치는 부분이 있으면 group_id로 묶는다)
-            letters_set = string.ascii_letters
-            random_list = random.sample(letters_set, 3)
-            result = ''.join(random_list)
-            sql_group_id = f"""
-                 SELECT rider_id,  min(start_time) , MAX(end_time),r_date,u_date,
-                   CASE
-                       WHEN ROW_NUMBER() OVER (PARTITION BY rider_id ORDER BY start_time) = 1 THEN CONCAT('callID_', oper_id ,'{result}')
-                       ELSE ''
-                   END AS group_id
-               FROM logic.r_info
-               WHERE rider_id = '{rider_id11}' AND start_time < end_time AND end_time > '2024-01-03 10:00:00';
-                                                 """
-            cursor.execute(sql_group_id)
-            conn.commit()
-            results = cursor.fetchall()
 
-            for row in results:
-                rider_id, start_time, end_time, r_date,u_date, group_id = row
-                sql_update_groupid = f"""
-                         UPDATE logic.r_info SET group_id = '{group_id}' WHERE rider_id = '{rider_id}'    
-                                        """
-                cursor.execute(sql_update_groupid)
-                conn.commit()
+            # for row in results:
+            #     rider_id, start_time, end_time, r_date, u_date, group_id = row
+            #     sql_update_groupid = f"""
+            #         UPDATE logic.r_info
+            #         SET group_id = '{group_id}'
+            #         WHERE rider_id = '{rider_id}'
+            #           AND start_time >= '{start_time}'
+            #           AND end_time <= '{end_time}';
+            #     """
+            #     cursor.execute(sql_update_groupid)
+            #
+            # conn.commit()
 
         # d_status 운행상태 업데이트
     up_query = f"""
@@ -245,27 +277,20 @@ def end():
                                                        WHERE rider_id = %s """
     cursor.execute(up_query, rider_id11)
     conn.commit()
+    
 
-
-    sql_group_id = f"""
-                          SELECT rider_id,  min(start_time) , MAX(end_time),r_date,u_date,
-                   CASE
-                       WHEN ROW_NUMBER() OVER (PARTITION BY rider_id ORDER BY start_time) = 1 THEN CONCAT('callID_', rider_id)
-                       ELSE ''
-                   END AS group_id
-               FROM logic.r_info
-               WHERE rider_id = '{rider_id11}' AND start_time < end_time AND end_time > '2024-01-03 10:00:00';
-                                            """
-    cursor.execute(sql_group_id)
+    #group_info관련 
+    check = f""" SELECT rider_id, start_time, end_time, r_date, group_id FROM logic.r_info WHERE group_id IS NOT NULL AND group_id != '';  """
+    cursor.execute(check)
     conn.commit()
     results = cursor.fetchall()
+    print(results)
     for row in results:
-        rider_id, start_time, end_time, r_date, u_date, group_id = row
+        rider_id, start_time, end_time, r_date, group_id = row
         c_operating = end_time - start_time
         total_minutes = c_operating.days * 1440 + c_operating.seconds / 60
         d_amount = total_minutes * 19
         u_date = datetime.now()
-
 
         # group_info 테이블 데이터 삽입
         sql_info = f"""
@@ -273,11 +298,10 @@ def end():
                                SELECT %s,%s, %s, %s, %s, %s, %s, %s
                                WHERE NOT EXISTS (
                                SELECT 1 FROM logic.group_info
-                               WHERE group_id = %s); """
+                               WHERE d_amount = '{d_amount}' ); """   # group_id가 계속 달라져서 나옴 왜그런걸까?...
         cursor.execute(sql_info, (
-                        c_operating, d_amount, group_id, rider_id11, start_time, end_time, r_date, u_date, group_id))
+                        c_operating, d_amount, group_id, rider_id, start_time, end_time, r_date, u_date))
         conn.commit()
-
 
     response = {
         "result": "ok"
