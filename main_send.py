@@ -23,7 +23,7 @@ def send_start_api(rider_ids, oper_ids, start_times, addresss, request_companys,
     }
     response = requests.post(url, headers=headers, json=body)
     print("response status %r" % response.status_code)
-
+    print("response text %r" % response.text)
 
 def send_end_api(rider_ids, oper_ids, end_time):
     API_HOST = "http://127.0.0.1:8091/reception/end"
@@ -35,18 +35,18 @@ def send_end_api(rider_ids, oper_ids, end_time):
         "end_time": end_time
     }
     response = requests.post(url, headers=headers, json=body)
-    # print("response status %r" % response.status_code)
-    # print("response text %r" % response.text)
+    print("response status %r" % response.status_code)
+    print("response text %r" % response.text)
 
 @app.route("/send", methods=['POST'])
 def versionCheck():
     data = request.get_json(silent=True)
-    oper_ids = data['oper_id']
-    rider_ids = data['rider_id']
-    start_times = data['start_time']
-    addresss = data['address']
-    request_companys = data['request_company']
-    end_time = data['end_time']
+    # oper_ids = data['oper_id']
+    # rider_ids = data['rider_id']
+    # start_times = data['start_time']
+    # addresss = data['address']
+    # request_companys = data['request_company']
+    # end_time = data['end_time']
 
     conn = dbconnect()
     cursor = conn.cursor()
@@ -60,7 +60,7 @@ def versionCheck():
                   request_company as 'company',
                   'start' as 'state'
               from
-                  logic.r_info
+                  logic.s_info
               union all
               select
                   rider_id as 'rider_id',
@@ -70,7 +70,7 @@ def versionCheck():
                   request_company as 'company',
                   'end' as 'state'
               from
-                  logic.r_info
+                  logic.s_info
               order by time asc;
           """
     cursor.execute(sql)
@@ -83,13 +83,13 @@ def versionCheck():
             # print('수신 시작')
             # /reception/start API 호출(운행ID, 기사ID, 시작시간, 주소, 요청사명)
             # json형태로 가공.
-            send_start_api(rider_ids, oper_ids, start_times, addresss, request_companys, state)
+            send_start_api(rider_id, oper_id, time, address, company, state)
             #print(rider_ids) #여기선 정상적으로 나옴
         else:
             # print('수신 종료')
             # /reception/end API 호출(운행ID, 기사ID, 종료시간)
             # json형태로 가공.
-            send_end_api(rider_ids, oper_ids, end_time)
+            send_end_api(rider_id, oper_id, time)
 
     response = {
         "result": "ok"
