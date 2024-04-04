@@ -1,9 +1,9 @@
 from flask import Flask, request, jsonify
 import pymysql
 from datetime import datetime
-import re
 import string
 import random
+
 
 app = Flask(__name__)
 
@@ -30,16 +30,11 @@ def start():
    INSERT INTO logic.r_info(oper_id, rider_id, start_time, address, request_company, r_date, u_date)
     SELECT '{oper_ids}', '{rider_ids}', '{start_times}', '{addresss}', '{request_companys}', '{start_times}', '{u_date}' 
     WHERE NOT EXISTS(
-        SELECT 1 FROM logic.r_info WHERE rider_id = "{rider_ids}"
+        SELECT 1 FROM logic.r_info WHERE rider_id = '{rider_ids}'
     AND oper_id = '{oper_ids}' ); """
 
-    try:
-        cursor.execute(insert_query)
-        conn.commit()
-        print("Data inserted successfully!")
-    except Exception as e:
-        print("Error during insertion:", e)
-
+    cursor.execute(insert_query)
+    conn.commit()
 
     # 운행시간 업데이트
     # driving_time이 제일 이른 시간이 들어가야함
@@ -49,48 +44,56 @@ def start():
                                      """
     cursor.execute(sql_time_check)
     conn.commit()
-    resultsss = cursor.fetchall()
-    if len(resultsss) == 0:
-        sql_rdate = f"""
-                select r_date from group_info
+
+    sql_rdate = f"""
+               select r_date from logic.r_info
                 """
-        cursor.execute(sql_rdate)
-        conn.commit()
-        result1 = cursor.fetchall()
-        for row in result1:
-            r_date = row[0]
-            u_date = datetime.now()
-                    # 1) 라이더 아이디가 중복되지 않게 저장되야함
-            insert_query = f""" INSERT INTO logic.group_all (driving_time,start_count, rider_id, end_count, r_date, u_date, group_count)
-                                SELECT  '{start_times}', 0,"{rider_ids}", 0, '{r_date}',' {u_date}', 0
+    cursor.execute(sql_rdate)
+    conn.commit()
+    result1 = cursor.fetchall()
+    insu_number = 1
+    for row in result1:
+        r_date = row[0]
+        u_date = datetime.now()
+                # 1) 라이더 아이디가 중복되지 않게 저장되야함
+        insert_query = f""" INSERT INTO logic.group_all (driving_time,start_count, rider_id, end_count, r_date, u_date, group_count)
+                            SELECT  '{start_times}', 0,"{rider_ids}", 0, '{r_date}',' {u_date}', 0
                                 WHERE NOT EXISTS (
                                     SELECT 1 FROM logic.group_all
-                                   WHERE rider_id = "{rider_ids}"
+                                   WHERE rider_id = '{rider_ids}'
                                 ); """
-            cursor.execute(insert_query)
-            conn.commit()
+        cursor.execute(insert_query)
+        conn.commit()
 
-        check_start_count = f""" SELECT  COUNT(oper_id) AS start_count, rider_id  FROM logic.r_info GROUP BY rider_id;     """
+        # 보험사 아이디는 처음 start_time입력될때 생성됨
+        insu_id = f"TEST{insu_number:05}"
+        up_query2 = f""" update logic.r_info set insurance_id = '{insu_id}' where oper_id = %s """
+        cursor.execute(up_query2, (oper_ids))
+        conn.commit()
+        insu_number += 1
+
+        # start_count업데이트
+        check_start_count = f""" SELECT  COUNT(oper_id) AS start_count, rider_id  FROM logic.r_info GROUP BY rider_id;    """
         cursor.execute(check_start_count)
         conn.commit()
         result_count = cursor.fetchall()
         for row in result_count:
             start_count, rider_id = row
-            sqls = f""" update group_all set start_count = '{start_count}' where rider_id = "{rider_id}"; """
+            sqls = f""" update group_all set start_count = '{start_count}' where rider_id = '{rider_id}'; """
             cursor.execute(sqls)
             conn.commit()
 
-    else:
-        # #2)start_count는 group_info에 있는 데이터 갯수만큼 정해지는 것임
-        check_start_count = f""" SELECT  COUNT(oper_id) AS start_count, rider_id  FROM logic.r_info GROUP BY rider_id; """
-        cursor.execute(check_start_count)
-        conn.commit()
-        result_count = cursor.fetchall()
-        for row in result_count:
-            start_count, rider_id = row
-            sqls = f""" update group_all set start_count = '{start_count}' where rider_id = "{rider_id}"; """
-            cursor.execute(sqls)
-            conn.commit()
+    # else:
+    #     # #2)start_count는 group_info에 있는 데이터 갯수만큼 정해지는 것임
+    #     check_start_count = f""" SELECT  COUNT(oper_id) AS start_count, rider_id  FROM logic.r_info GROUP BY rider_id; """
+    #     cursor.execute(check_start_count)
+    #     conn.commit()
+    #     result_count = cursor.fetchall()
+    #     for row in result_count:
+    #         start_count, rider_id = row
+    #         sqls = f""" update group_all set start_count = '{start_count}' where rider_id = '{rider_id}'; """
+    #         cursor.execute(sqls)
+    #         conn.commit()
 
     response = {
         "result": "ok"
@@ -101,7 +104,6 @@ def start():
 @app.route("/reception/end", methods=['POST'])  # 운행종료
 def end():
     params = request.get_json(silent=True)
-
     print("운행종료")
 
     # 운행 종료 로직 호출
@@ -111,163 +113,134 @@ def end():
     conn = dbconnect()
     cursor = conn.cursor()
 
-    # 그룹아이디 생성
-    letters_set = string.ascii_letters
-    random_list = random.sample(letters_set, 3)
-    result = ''.join(random_list)
-    sql_group_id = f""" SELECT rider_id, end_time ,CONCAT('callID_','{result}') AS group_id, start_time
-                  FROM logic.r_info a
-                  WHERE EXISTS (
-                      SELECT 1
-                      FROM logic.r_info b
-                      WHERE a.rider_id != b.rider_id
-                      AND a.start_time < b.end_time        
-                  ); """
-    cursor.execute(sql_group_id)
+    # end_count 업데이트 하기전에 이미 업데이트했으면 안하게.. 수정
+    # 1. group_all 테이블 end_count + 1
+    sql_endcount_up = f"""
+    update group_all set end_count = end_count + 1 where rider_id = '{rider_id11}';
+    """
+    cursor.execute(sql_endcount_up)
     conn.commit()
-    results = cursor.fetchall()
 
-    # 앞에서 구한 group_id를 r_info에 업데이트
-    for row in results:
-        rider_id, end_time, group_id, start_time = row
 
-        random_list = random.sample(string.ascii_letters, 3)
-        result = ''.join(random_list)
-        group_id = f'callID_{result}'
-
-        sqls = f""" update logic.r_info set group_id = '{group_id}' where rider_id = '{rider_id}' """
-        cursor.execute(sqls)
-        conn.commit()
-
-        sql_update_groupid = f""" UPDATE logic.r_info AS a
-            LEFT JOIN (SELECT rider_id FROM logic.r_info WHERE group_id IS NOT NULL OR group_id != '') AS b
-            ON a.rider_id = b.rider_id
-            SET a.group_id = %s
-            WHERE b.rider_id IS NULL AND a.end_time = %s AND a.start_time = %s; """
-        cursor.execute(sql_update_groupid, (group_id, end_time, start_time))
-        conn.commit()
-
-    # end_time업데이트
-    sql_endcount = f""" UPDATE logic.r_info SET end_time = '{end_time11}' WHERE rider_id ="{rider_id11}" and oper_id = '{oper_id11}';  """
-
+    # 2. r_info 테이블 end_time UPDATE
+    sql_endcount = f""" UPDATE logic.r_info SET end_time = '{end_time11}' WHERE rider_id ='{rider_id11}' and oper_id = '{oper_id11}';  """
     cursor.execute(sql_endcount)
     conn.commit()
 
-    # end_count업데이트
-    sql_end_check = f""" SELECT  COUNT(end_time) AS end_count, rider_id  FROM logic.r_info GROUP BY rider_id; """
-    cursor.execute(sql_end_check)
-    conn.commit()
-    result_count = cursor.fetchall()
-    for row in result_count:
-        end_count, rider_id = row
-        sql_allupdate = f""" UPDATE logic.group_all SET end_count = '{end_count}' WHERE rider_id ="{rider_id}"; """
-
-        cursor.execute(sql_allupdate)
-        conn.commit()
-
-        check = f"""
-            SELECT CASE
-            WHEN start_count = end_count THEN 1
-            ELSE 0
-            END AS 일치여부
-            FROM logic.group_all
-            WHERE rider_id = "{rider_id11}";
-            """
-        cursor.execute(check)
-        conn.commit()
-        resultssss = cursor.fetchall()
-
-        if resultssss == '1':
-            print("이미 업데이트 됨")
-        else:
-            # group_count가 end_count 갯수와 일치하지 않나...싶은데
-            up_sql = f""" 
-            UPDATE logic.group_all
-            SET group_count = end_count
-            WHERE rider_id = "{rider_id11}"; """
-            cursor.execute(up_sql)
-            conn.commit()
-
-            # group_count +1
-            # sql_update = f"""
-            #                     UPDATE logic.group_all SET group_count = 1 WHERE rider_id ='{rider_id}'
-            #                                         """
-            # cursor.execute(sql_update)
-            # conn.commit()
-
-    #  s_info에 데이터 조회 및 end_time 업데이트
-    sql_check = f"""select  oper_id, end_time  from logic.r_info"""
-    cursor.execute(sql_check)
-    conn.commit()
-    result = cursor.fetchall()
-
-    insu_number = 1
-    for row in result:
-        oper_ids, end_times = row
-
-        # end_times 값이 존재할 때만 UPDATE 구문 실행
-        if end_times is not None:
-            sql_r_info_up = f""" UPDATE logic.r_info SET end_time = '{end_times}', u_date = NOW() WHERE oper_id ='{oper_ids}'; """
-            cursor.execute(sql_r_info_up)
-            conn.commit()
-
-            # 보험사 아이디 업데이트
-            insu_id = f"TEST{insu_number:05}"
-            up_query2 = f""" update logic.r_info set insurance_id = '{insu_id}' where oper_id = %s """
-            cursor.execute(up_query2, (oper_ids))
-            conn.commit()
-            insu_number += 1
-
-            # 5.다건 배송이 종료될때 그룹 아이디 생성
-            # group id는 종료 시간까지 다 나왔을때 입력해줘야한다. (그래서 state == end일때 구한다.)
-            # group_id 조회(같은 라이더 중에서 배달 시간이 겹치는 부분이 있으면 group_id로 묶는다)
-
-            # for row in results:
-            #     rider_id, start_time, end_time, r_date, u_date, group_id = row
-            #     sql_update_groupid = f"""
-            #         UPDATE logic.r_info
-            #         SET group_id = '{group_id}'
-            #         WHERE rider_id = '{rider_id}'
-            #           AND start_time >= '{start_time}'
-            #           AND end_time <= '{end_time}';
-            #     """
-            #     cursor.execute(sql_update_groupid)
-            #
-            # conn.commit()
-
-        # d_status 운행상태 업데이트
-    up_query = f""" UPDATE logic.r_info
-                       SET d_status = CASE
-                            WHEN end_time IS NULL THEN 'driving'
-                                                   ELSE 'complete'
-                                    
-                       WHERE rider_id = %s """
-    cursor.execute(up_query, rider_id11)
-    conn.commit()
-    
-
-    #group_info관련 
-    check = f""" SELECT rider_id, start_time, end_time, r_date, group_id FROM logic.r_info WHERE group_id IS NOT NULL AND group_id != '';  """
+    # 3. start_count 와 end_count 동일할 경우
+    check = f"""
+                          SELECT CASE
+                          WHEN start_count = end_count THEN 1
+                          ELSE 0
+                          END AS 일치여부
+                          FROM logic.group_all
+                          WHERE rider_id = '{rider_id11}';
+                          """
     cursor.execute(check)
     conn.commit()
-    results = cursor.fetchall()
-    for row in results:
-        rider_id, start_time, end_time, r_date, group_id = row
-        c_operating = end_time - start_time
-        total_minutes = c_operating.days * 1440 + c_operating.seconds / 60
-        d_amount = total_minutes * 19
-        u_date = datetime.now()
+    result_check = cursor.fetchall()
+    if str(result_check) == '((1,),)':
+        # group_all 테이블 group_count + 1
+        sql_g_count = f"""
+            update logic.group_all set group_count = group_count + 1 where rider_id = '{rider_id11}'
+            """
+        cursor.execute(sql_g_count)
+        conn.commit()
 
-        # group_info 테이블 데이터 삽입
-        sql_info = f"""
-                        INSERT IGNORE INTO logic.group_info (c_operating, d_amount,group_id, rider_id, start_time, end_time, r_date, u_date)
-                        SELECT %s,%s, %s, %s, %s, %s, %s, %s
+        # 그룹아이디 생성
+        letters_set = string.ascii_letters
+        random_list = random.sample(letters_set, 3)
+        result_id = ''.join(random_list)
+
+        group_id = "IDG_"+result_id
+        # 생성한 그룹아이디 업데이트
+        sqls = f""" UPDATE r_info SET group_id = '{group_id}' WHERE group_id is null AND rider_id = '{rider_id11}' """
+        cursor.execute(sqls)
+        conn.commit()
+
+        # 운행 상태 업데이트
+        up_query = f"""
+                    UPDATE logic.r_info
+                    SET d_status = CASE  
+                    WHEN '{end_time11}' IS NULL OR '{end_time11}' = '' THEN 'driving' 
+                    ELSE 'complete' 
+                    END 
+                    WHERE rider_id = '{rider_id11}' """
+
+        cursor.execute(up_query)
+        conn.commit()
+        
+        # r_info 데이터구하기
+        sql_check = f"""
+                select rider_id, start_time, end_time, group_id from logic.r_info
+                """
+        cursor.execute(sql_check)
+        conn.commit()
+        sql_checks = cursor.fetchall()
+        for row in sql_checks:
+            rider_id2, start_time2, end_time2, group_id2 = row
+
+            # MIN(start_time), MAX(end_time) 추출
+            sql_g_time = f"""
+                                    select
+                                    MIN(start_time),
+                                    MAX(end_time), r_date, rider_id
+                                    from logic.r_info
+                                    where group_id = '{group_id2}'
+                                    """
+            cursor.execute(sql_g_time)
+            conn.commit()
+            result_time = cursor.fetchall()
+            for row in result_time:
+                start_time11, end_time11, r_date11, rider_id111 = row
+                print(row)
+                # group_info 생성
+                sql_info = f"""
+                        INSERT IGNORE INTO logic.group_info (group_id, rider_id)
+                        SELECT %s,%s
                         WHERE NOT EXISTS (
                         SELECT 1 FROM logic.group_info
-                        WHERE d_amount = '{d_amount}' ); """   # group_id가 계속 달라져서 나옴 왜그런걸까?...
-        cursor.execute(sql_info, (
-                        c_operating, d_amount, group_id, rider_id, start_time, end_time, r_date, u_date))
-        conn.commit()
+                        WHERE group_id = '{group_id2}' ); """
+                cursor.execute(sql_info,
+                           (group_id2, rider_id111,))
+                conn.commit()
+                c_operating = end_time11 - start_time11
+                total_minutes = c_operating.days * 1440 + c_operating.seconds / 60
+                d_amount = total_minutes * 19
+                u_date = datetime.now()
+                sql_info_update = f"""
+                UPDATE logic.group_info
+                SET start_time = '{start_time11}', end_time = '{end_time11}',
+                d_amount = '{d_amount}', c_operating = '{c_operating}' , u_date = '{u_date}' , r_date ='{r_date11}'
+                WHERE group_id = '{group_id2}'
+                 """
+                cursor.execute(sql_info_update)
+                conn.commit()
+
+    # 앞에서 구한 group_id를 r_info에 업데이트
+    # for row in results:
+    #     rider_id, end_time, group_id, start_time = row
+    #
+    #     random_list = random.sample(string.ascii_letters, 3)
+    #     result = ''.join(random_list)
+    #     group_id = f'callID_{result}'
+    #
+    #
+    #
+    #     sql_update_groupid = f""" UPDATE logic.r_info AS a
+    #         LEFT JOIN (SELECT rider_id FROM logic.r_info WHERE group_id IS NOT NULL OR group_id != '') AS b
+    #         ON a.rider_id = b.rider_id
+    #         SET a.group_id = %s
+    #         WHERE b.rider_id IS NULL AND a.end_time = %s AND a.start_time = %s; """
+    #     cursor.execute(sql_update_groupid, (group_id, end_time, start_time))
+    #     conn.commit()
+
+    #  s_info에 데이터 조회 및 end_time 업데이트
+    # sql_check = f"""select  oper_id, end_time  from logic.r_info"""
+    # cursor.execute(sql_check)
+    # conn.commit()
+    # result = cursor.fetchall()
+
 
     response = {
         "result": "ok"
