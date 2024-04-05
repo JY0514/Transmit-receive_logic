@@ -10,29 +10,31 @@ def dbconnect():
     return conn
 
 
-def send_start_api(rider_ids, oper_ids, start_times, addresss, request_companys):
+def send_start_api(rider_id, oper_id, start_time, address, request_company):
     API_HOST = "http://127.0.0.1:8091/reception/start"
     url = API_HOST
     headers = {'Content-Type': 'application/json', 'charset': 'UTF-8', 'Accept': '*/*'}
     body = {
-        "rider_id": rider_ids,
-        "oper_id": oper_ids,
-        "start_time": start_times,
-        "address": addresss,
-        "request_company": request_companys
+        "rider_id": rider_id,
+        "oper_id": oper_id,
+        "start_time": start_time,
+        "address": address,
+        "request_company": request_company
     }
     requests.post(url, headers=headers, json=body)
 
-def send_end_api(rider_ids, oper_ids, end_time):
+
+def send_end_api(rider_id, oper_id, end_time):
     API_HOST = "http://127.0.0.1:8091/reception/end"
     url = API_HOST
     headers = {'Content-Type': 'application/json', 'charset': 'UTF-8', 'Accept': '*/*'}
     body = {
-        "rider_id": rider_ids,
-        "oper_id": oper_ids,
+        "rider_id": rider_id,
+        "oper_id": oper_id,
         "end_time": end_time
     }
     requests.post(url, headers=headers, json=body)
+
 
 @app.route("/send", methods=['POST'])
 def versionCheck():
@@ -65,7 +67,7 @@ def versionCheck():
     cursor.execute(sql)
     conn.commit()
     resultu = cursor.fetchall()
-    
+
     print("API 송신 시작")
 
     for row in resultu:
