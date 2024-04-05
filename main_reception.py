@@ -115,11 +115,11 @@ def end():
     cursor.execute(sql_endcount_up)
     conn.commit()
 
-    sql = f"""
-          select start_time,rider_id  from r_info
-    """
-    cursor.execute(sql)
-    conn.commit()
+    # sql = f"""
+    #       select start_time,rider_id  from r_info
+    # """
+    # cursor.execute(sql)
+    # conn.commit()
 
     #  r_info 테이블 end_time UPDATE
     sql_endcount = f""" UPDATE logic.r_info SET end_time = '{end_time}', d_status = 'complete' WHERE rider_id ='{rider_id}' and oper_id = '{oper_id}';  """
@@ -138,6 +138,7 @@ def end():
     cursor.execute(check)
     conn.commit()
     result_check = cursor.fetchall()
+    print(rider_id)
     print(str(result_check))
     if str(result_check) == '((1,),)':  # 일치한 경우 1
         # group_all 테이블 group_count + 1
