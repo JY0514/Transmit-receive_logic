@@ -106,49 +106,58 @@ def end():
     """
     cursor.execute(sql)
     conn.commit()
-    end_time2 = cursor.fetchone()
-    end_time_s = end_time2[0]
+    start_time = cursor.fetchone()
+    start_time_s = start_time[0]
     end_date_str = end_time_s.strftime("%Y-%m-%d")
+    # print(end_date_str)
+    # print(rider_id)   #여기선 7, 4개가 나옴
+    start_time_Str = start_time_s.strftime("%Y-%m-%d")
+
+    # end_count와 start_count가 날짜가 걸치는 경우가 있을수도 있으니 ..
     sql_endcount_up = f"""
-     update group_all set end_count = end_count + 1 where rider_id = '{rider_id}' and driving_time like '{end_date_str}%';
+     update group_all set end_count = end_count + 1 where rider_id = '{rider_id}' and driving_time like '{start_time_Str}%';
              """
     cursor.execute(sql_endcount_up)
     conn.commit()
-
-    # sql = f"""
-    #       select start_time,rider_id  from r_info
-    # """
-    # cursor.execute(sql)
-    # conn.commit()
 
     #  r_info 테이블 end_time UPDATE
     sql_endcount = f""" UPDATE logic.r_info SET end_time = '{end_time}', d_status = 'complete' WHERE rider_id ='{rider_id}' and oper_id = '{oper_id}';  """
     cursor.execute(sql_endcount)
     conn.commit()
 
-    #  start_count 와 end_count 동일한지 확인
+    sql_end_time = f"""
+                SELECT  end_time 
+                FROM logic.r_info where end_time like '{end_date_str}%'
+                GROUP BY rider_id;
+    """
+    cursor.execute(sql_end_time)
+    conn.commit()
+    result = cursor.fetchone()
+    # 여기까진 맞고
+    
+    result_test = result[0].strptime(end_time, "%Y-%m-%d %H:%M:%S")
+    result_tests = result_test.strftime("%Y-%m-%d")
+
+    #  start_count 와 end_count 동일한지 확인 동일하면 1로 나옴
     check = f"""
                 SELECT CASE
                 WHEN start_count = end_count THEN 1
                 ELSE 0
                 END AS 일치여부
                 FROM logic.group_all
-                WHERE rider_id = '{rider_id}' and driving_time = '{end_date_str}';
+                WHERE rider_id = '{rider_id}' and driving_time like '{result_tests}%';  
                           """
     cursor.execute(check)
     conn.commit()
     result_check = cursor.fetchall()
-    print(rider_id)
-    print(str(result_check))
-    if str(result_check) == '((1,),)':  # 일치한 경우 1
+    if str(result_check) == '((1,),)':  # 일치한 경우 1   여기서 rider_id가 8번이 나온다는거네....,
         # group_all 테이블 group_count + 1
         sql_g_count = f"""
-            update logic.group_all set group_count = group_count + 1 where rider_id = '{rider_id}'
-            """
+              update logic.group_all set group_count = group_count + 1 where rider_id = '{rider_id}'
+              """
         cursor.execute(sql_g_count)
         conn.commit()
 
-        # 그룹아이디 생성
         letters_set = string.ascii_letters
         random_list = random.sample(letters_set, 3)
         result_id = ''.join(random_list)
@@ -159,16 +168,15 @@ def end():
         cursor.execute(sqls)
         conn.commit()
 
-        # 이상하게 r_info에 존재하지 않는 그룹아이디가 들어가서 체크하고.. 생성함
         sql_check_group = f"""
             SELECT COUNT(*)
-            FROM logic.group_info
+            FROM logic.r_info
             WHERE group_id = '{group_id}';
         """
         cursor.execute(sql_check_group)
         conn.commit()
         result_group_check = cursor.fetchone()[0]
-        if result_group_check == 0:
+        if result_group_check != 0:
             # group_info 생성
             sql_info = f"""
                     INSERT IGNORE INTO logic.group_info (group_id, rider_id)
@@ -228,7 +236,6 @@ def end():
 
                 if oper_time > 300:  # 현재 운행 시간이 300이 넘는지
                     print("현재 운행 시간이 300분 초과")
-                    # print(oper_time)
                     # start_time이 다르면 제외함
                     d_amounts = 0
                     sql_info_update = f"""
