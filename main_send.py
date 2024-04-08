@@ -4,11 +4,9 @@ from flask import Flask, request, json, jsonify
 
 app = Flask(__name__)
 
-
 def dbconnect():
     conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
     return conn
-
 
 def send_start_api(rider_id, oper_id, start_time, address, request_company):
     API_HOST = "http://127.0.0.1:8091/reception/start"
@@ -23,7 +21,6 @@ def send_start_api(rider_id, oper_id, start_time, address, request_company):
     }
     requests.post(url, headers=headers, json=body)
 
-
 def send_end_api(rider_id, oper_id, end_time):
     API_HOST = "http://127.0.0.1:8091/reception/end"
     url = API_HOST
@@ -34,7 +31,6 @@ def send_end_api(rider_id, oper_id, end_time):
         "end_time": end_time
     }
     requests.post(url, headers=headers, json=body)
-
 
 @app.route("/send", methods=['POST'])
 def versionCheck():
@@ -89,7 +85,6 @@ def versionCheck():
         "result": "ok"
     }
     return jsonify(response)
-
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=8090)
