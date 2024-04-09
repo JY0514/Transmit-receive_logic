@@ -134,49 +134,35 @@ def end():
     result_tests = result_test.strftime("%Y-%m-%d")
 
     #  start_count 와 end_count 동일한지 확인 동일하면 1로 나옴
-    # check = f"""
-    #             SELECT CASE
-    #             WHEN start_count = end_count THEN 1
-    #             ELSE 0
-    #             END AS 일치여부
-    #             FROM logic.group_all
-    #             WHERE rider_id = '{rider_id}' and driving_time like '{result_tests}%';
-    #                       """   #여기서 8개가 나와서 문제임 7개가 나와야하는건데
-    #
     check = f"""
-           SELECT DISTINCT rider_id, 
-           CASE
+                SELECT CASE
                 WHEN start_count = end_count THEN 1
                 ELSE 0
-           END AS 일치여부 , driving_time
-           FROM logic.group_all
-           WHERE rider_id = '{rider_id}' OR driving_time LIKE '{result_tests}%'
-           GROUP BY rider_id, start_count, end_count;
-    """
-
+                END AS 일치여부, driving_time , rider_id
+                FROM logic.group_all
+                WHERE rider_id = '{rider_id}' and driving_time like '{result_tests}%';  
+                          """   #여기서 일별로 데이터가 나오게해서 분리
     cursor.execute(check)
     conn.commit()
     result_check = cursor.fetchall()
-    print(result_check)
-    date_dict = defaultdict(list)
-
+    # 일별로 나눠서 for문 작동..
     for row in result_check:
-        datetime = datetime.strptime(row[2], "%Y-%m-%d %H:%M:%S.%f")
-        date_key = datetime.date()
-        date_dict[date_key].append(row)
-        for date_key, rows in date_dict.items():
-            print(f"날짜: {date_key}")
-            for row in rows:
-        if str(row[1]) == '1':  # 일치한 경우 1
+        sql_g_counts = "select rider_id , end_time, count(end_time) as end_count  from r_info group by rider_id , group_id "
+        cursor.execute(sql_g_counts)
+
+        print(row)         #8개가 나옴 동일한경우니까..             end_time을 기준으로 잡아야하나 8개가 나오지 않게 수정해야함 어떻게?????????
+        print(row[0])
+        if row[0] == 1:
+            print(rider_id)
+            print("일치한 경우 1")
             # group_all 테이블 group_count + 1, 중복 업데이트 방지
             sql_g_count = f"""
                   UPDATE logic.group_all 
                   SET group_count = group_count + 1 
-                  WHERE rider_id = '{row[0]}';
+                  WHERE rider_id = '{rider_id}' and driving_time like '{result_tests}%';
                   """
             cursor.execute(sql_g_count)
             conn.commit()
-
             # 랜덤으로 그룹아이디 생성
             letters_set = string.ascii_letters
             random_list = random.sample(letters_set, 3)
@@ -198,7 +184,7 @@ def end():
             if result_group_check != 0:  # 그룹아이디 존재하는것만 group_info생성
                 # group_info 생성
                 sql_info = f"""
-                        INSERT IGNORE INTO logic.group_info (group_id, rider_id)
+                        INSERT IGNORE INTO logic.group_info (group_id, rider_id) 
                         SELECT %s,%s
                         WHERE NOT EXISTS (
                         SELECT 1 FROM logic.group_info
@@ -226,7 +212,7 @@ def end():
                     # 여기서 업데이트해야 밑에 쿼리문이 돌아감
                     sql_info_update = f"""
                                       UPDATE logic.group_info
-                                      SET start_time = '{first_start_time}', end_time = '{end_time}',
+                                      SET start_time = '{first_start_time}', end_time = '{end_time_s}',
                                       d_amount = '{d_amount}', c_operating = '{oper_m}' , u_date = NOW() , r_date = NOW()
                                       WHERE group_id = '{group_id}'
                                        """
@@ -316,7 +302,6 @@ def end():
         "result": "ok"
     }
     return jsonify(response)
-
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=8091)
