@@ -6,13 +6,14 @@ import random
 import math
 from collections import defaultdict
 
-
 app = Flask(__name__)
 
 
 def dbconnect():
     conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
     return conn
+
+
 @app.route("/reception/start", methods=['POST'])  # 운행시작
 def start():
     params = request.get_json(silent=True)
@@ -71,7 +72,7 @@ def start():
     min_start_time = cursor.fetchone()
 
     if min_start_time[0] is not None:
-        group_driving_time =  min_start_time[0].strftime("%Y-%m-%d")
+        group_driving_time = min_start_time[0].strftime("%Y-%m-%d")
 
         sql_startcount_up = f"""
                         update group_all set start_count = start_count + 1 where rider_id = '{rider_id}' and driving_time like '{group_driving_time}%';
@@ -102,7 +103,6 @@ def end():
     conn = dbconnect()
     cursor = conn.cursor()
 
-
     sql = f"""
         select start_time
           from r_info
@@ -114,11 +114,10 @@ def end():
     end_datetime = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
 
     # Date(YYYY-MM-DD 형식 문자열포맷팅)
+
     start_time_str = start_datetime[0].strftime("%Y-%m-%d")
 
     global group_min_start_time
-
-    end_date_str = end_datetime.strftime("%Y-%m-%d")
 
     # 그룹(다건)운행 중인지 아닌지에 대한 체크
     sql_min_start_time = f""" SELECT MIN(start_time) FROM r_info WHERE group_id is NULL AND rider_id = '{rider_id}'; """
@@ -129,7 +128,7 @@ def end():
     if min_start_time[0] is not None:
         group_driving_time = min_start_time[0].strftime("%Y-%m-%d")
 
-        sql_update_endcount= f"""
+        sql_update_endcount = f"""
         update group_all set end_count = end_count + 1 where rider_id = '{rider_id}' and driving_time like '{group_driving_time}%';
                 """
         cursor.execute(sql_update_endcount)
@@ -137,7 +136,7 @@ def end():
 
         group_min_start_time = group_driving_time
     else:
-        sql_update_endcount= f"""
+        sql_update_endcount = f"""
         update group_all set end_count = end_count + 1 where rider_id = '{rider_id}' and driving_time like '{start_time_str}%';
                 """
         cursor.execute(sql_update_endcount)
@@ -162,7 +161,7 @@ def end():
     # 3. group_all start/end count 추출 end --------------------------------------------------------------------------
 
     # 4. 그룹(다건)운행 종료 구분
-    if(start_count == end_count):
+    if (start_count == end_count):
 
         # 5. 그룹 카운트 올리기 start --------------------------------------------------------------------------
         sql_update_group_count = f""" UPDATE group_all SET group_count = group_count + 1 WHERE rider_id = '{rider_id}' and driving_time like '{group_min_start_time}'; """
@@ -191,15 +190,13 @@ def end():
         cursor.execute(sql_update_group_id)
         conn.commit()
         # 8. 그룹 ID Update end --------------------------------------------------------------------------
-
-    
         end_time_s = datetime.strptime(end_time, "%Y-%m-%d %H:%M:%S")
+        start_times = start_datetime[0]
         if first_start_time is not None:
-            start_time_f = datetime.strptime(group_min_start_time, "%Y-%m-%d")
             # c_operating 분으로 변경 및 보험료 구하는 계산
-            c_operating = end_time_s - start_time_f
+            c_operating = end_time_s - start_times
             minutes = c_operating.total_seconds() / 60
-            oper_m = int(minutes)  # 건마다 들어가는 운행시간
+            oper_m = int(minutes)
             total_minutes = c_operating.days * 1440 + c_operating.seconds / 60
             d_amount = total_minutes * 19  # 건마다 들어가는 보험료
             sql_info = f"""
@@ -219,7 +216,9 @@ def end():
                                """
             cursor.execute(sql_info_update)
             conn.commit()
-            # 라이더마다 운행시간이 총 300분인지 확인
+            print(oper_m)
+
+            # 라이더마다 운행시간, 운행시작시간, 총 보험료 확인
             sql_rider_oper = f"""
            SELECT DATE(start_time), SUM(c_operating), SUM(d_amount)
             FROM group_info
@@ -298,7 +297,7 @@ def end():
                         cursor.execute(sql_info_update)
                         conn.commit()
                 else:
-                 print("으악")
+                    print("")
     response = {
         "result": "ok"
     }
@@ -307,7 +306,6 @@ def end():
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=8091)
-
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=8091)
