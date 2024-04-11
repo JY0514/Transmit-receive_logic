@@ -1,12 +1,9 @@
 import requests
-import pymysql
 from flask import Flask, request, json, jsonify
-
+import sql
 app = Flask(__name__)
 
-def dbconnect():
-    conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
-    return conn
+sql.dbconnect()
 
 def send_start_api(rider_id, oper_id, start_time, address, request_company):
     API_HOST = "http://127.0.0.1:8091/reception/start"
@@ -33,8 +30,9 @@ def send_end_api(rider_id, oper_id, end_time):
     requests.post(url, headers=headers, json=body)
 
 @app.route("/send", methods=['POST'])
-def versionCheck():
-    conn = dbconnect()
+def send_start():
+    import sql
+    conn = sql.dbconnect()
     cursor = conn.cursor()
 
     # start와 end 구분
@@ -90,7 +88,7 @@ if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=8090)
 
 try:
-    connection = dbconnect()
+    connection = sql.dbconnect()
     if connection:
         print("DB 접속 완료")
     else:
