@@ -131,6 +131,9 @@ def end():
             # 보험료 산출
             d_amount, d_amount_n = sql.d_amounts(sql, rider_id, cursor, d_amount, conn, oper_m, group_id, first_start_time,
                                              end_time_s)
+
+            print(d_amount)
+            print(d_amount_n)
             # 반환된 값을 사용하여 다른 함수 호출
             sql.d_amounts(sql, rider_id, cursor, d_amount, conn, oper_m, group_id, first_start_time, end_time_s)
 
