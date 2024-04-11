@@ -27,6 +27,7 @@ def start():
     sql.generate_insu_id(string, random, cursor, oper_id)
     sql.update_start_time(cursor,rider_id, start_date)
 
+    conn.commit()
     response = {"result": "ok"}
     return jsonify(response)
 
@@ -143,13 +144,7 @@ def end():
             cursor.execute(sql_info, (group_id, rider_id))
             conn.commit()
             # 여기서 업데이트해야 밑에 쿼리문이 돌아감
-            sql_info_update = f"""
-                              UPDATE group_info
-                              SET start_time = '{first_start_time}', end_time = '{end_time}',
-                              d_amount = '{d_amount}', c_operating = '{oper_m}' , u_date = NOW() , r_date = NOW()
-                              WHERE group_id = '{group_id}'
-                               """
-            cursor.execute(sql_info_update)
+            sql.info_update(first_start_time, end_time_s, d_amount, oper_m, group_id, cursor)
             conn.commit()
 
             # 라이더마다 운행시간, 운행시작시간, 총 보험료 확인
@@ -178,71 +173,38 @@ def end():
                         cursor.execute(sql_date_check)
                         conn.commit()
                         date_result = cursor.fetchall()
-                        if len(date_result) != 1 or date_result[0][0] != date_result[0][
-                            1]:  # start_time과 end_time 날짜가 다른 경우
+                        if len(date_result) != 1 or date_result[0][0] != date_result[0][1]:  # start_time과 end_time 날짜가 다른 경우
                             d_amounts = 0
-                            sql_info_update = f"""
-                                             UPDATE group_info
-                                             SET start_time = '{first_start_time}', end_time = '{end_time_s}',
-                                             d_amount = '{d_amounts}', c_operating = '{oper_m}' , u_date = NOW() , r_date = NOW()
-                                             WHERE group_id = '{group_id}'
-                                         """
-                            cursor.execute(sql_info_update)
+                            sql.info_update(first_start_time, end_time_s, d_amounts, oper_m, group_id, cursor)
                             conn.commit()
+
                         else:  # start_time과 end_time 날짜가 같은 경우
                             d_amounts = 0
-                            sql_info_update = f"""
-                                               UPDATE group_info
-                                               SET start_time = '{first_start_time}', end_time = '{end_time_s}',
-                                               d_amount = '{d_amounts}', c_operating = '{oper_m}' , u_date = NOW() , r_date = NOW()
-                                               WHERE group_id = '{group_id}' 
-                                           """
-                            cursor.execute(sql_info_update)
+                            sql.info_update(first_start_time, end_time_s, d_amounts, oper_m, group_id, cursor)
                             conn.commit()
+
                     elif time + oper_time > 300:  # 지금 추가되는 시간이 300이 넘는지
                         # 새로 추가되는 시간이 더해져야함
                         print("지금까지의 운행 시간에 현재 운행 시간이 더해져서 300분이 초과")
                         d_amounts = 6700 - d_amount_now
-                        sql_info_update = f"""
-                                                                     UPDATE group_info
-                                                                     SET start_time = '{first_start_time}', end_time = '{end_time_s}',
-                                                                     d_amount = '{d_amounts}', c_operating = '{oper_m}' , u_date = NOW() , r_date = NOW()
-                                                                     WHERE group_id = '{group_id}' 
-                                                                 """
-                        cursor.execute(sql_info_update)
+                        sql.info_update(first_start_time, end_time_s, d_amounts, oper_m, group_id, cursor)
                         conn.commit()
-                    elif time < 300:  # 지금 추가되는 시간이 300이 넘는지
-                        sql_info_update = f"""
-                                                                     UPDATE group_info
-                                                                     SET start_time = '{first_start_time}', end_time = '{end_time_s}',
-                                                                     d_amount = '{d_amount}', c_operating = '{oper_m}' , u_date = NOW() , r_date = NOW()
-                                                                     WHERE group_id = '{group_id}' 
-                                                                 """
-                        cursor.execute(sql_info_update)
+
+                    elif time < 300:  # 지금 추가되는 시간이 300이 넘는지 d_amount
+                        sql.info_update(first_start_time, end_time_s, d_amount, oper_m, group_id, cursor)
                         conn.commit()
+
                     else:  # 운행시간이 300이 안넘음
                         print("운행 시간이 300분이 초과X")
-                        # def test_sql(self, sql, args=None):
-                        #     result = self.cur.executemany(sql, args)
-                        #     self.cur.close()
-                        #     self.con.close()
-                        #     return result
-
-                        sql_info_update = f""" UPDATE group_info
-                                               SET start_time = '{first_start_time}', end_time = '{end_time_s}',
-                                               d_amount = '{d_amounts}', c_operating = '{oper_m}' , u_date = NOW() , r_date = NOW()
-                                               WHERE group_id = '{group_id}'
-                                                                 """
-                        cursor.execute(sql_info_update)
+                        sql.info_update(first_start_time, end_time_s, d_amounts, oper_m, group_id, cursor)
                         conn.commit()
+
                 else:
                     print("")
     response = {
         "result": "ok"
     }
     return jsonify(response)
-
-
 
 if __name__ == "__main__":
     app.run(debug=True, host='0.0.0.0', port=8091)
