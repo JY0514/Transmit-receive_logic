@@ -1,7 +1,3 @@
-import pymysql
-def dbconnect():
-    conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
-    return conn
 
 def generate_insu_id(string, random, cursor, oper_id):
     letters_set = string.ascii_letters
@@ -62,3 +58,8 @@ def info_update(first_start_time, end_time_s, d_amounts, oper_m, group_id, curso
                                              """
     cursor.execute(sql_info_update)
 
+def update_end_count(rider_id, group_driving_time, cursor):
+    sql_update_endcount = f"""
+    update group_all set end_count = end_count + 1 where rider_id = '{rider_id}' and driving_time like '{group_driving_time}%';
+            """
+    cursor.execute(sql_update_endcount)

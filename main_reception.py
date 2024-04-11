@@ -3,9 +3,13 @@ from datetime import datetime
 import string
 import random
 import sql
-import database
+import pymysql
 
 app = Flask(__name__)
+
+def dbconnect():
+    conn = pymysql.connect(host='127.0.0.1', user='root', password='1234', db='logic', charset='utf8')
+    return conn
 
 @app.route("/reception/start", methods=['POST'])  # 운행시작
 def start():
@@ -20,7 +24,7 @@ def start():
     start_time = datetime.strptime(params['start_time'], "%Y-%m-%d %H:%M:%S")
     start_date = start_time.strftime("%Y-%m-%d")
 
-    conn = database.dbconnect()
+    conn = dbconnect()
     cursor = conn.cursor()
 
     sql.insert_r_info(cursor, oper_id, rider_id, start_time,address,request_company,start_times)
@@ -38,7 +42,7 @@ def end():
     oper_id = params['oper_id']
     rider_id = params['rider_id']
     end_time = params['end_time']
-    conn = database.dbconnect()
+    conn = dbconnect()
     cursor = conn.cursor()
 
     sql_r_info = f"""
@@ -64,19 +68,13 @@ def end():
     # 1. 카운트 올리기 start --------------------------------------------------------------------------
     if min_start_time[0] is not None:
         group_driving_time = min_start_time[0].strftime("%Y-%m-%d")
-
-        sql_update_endcount = f"""
-        update group_all set end_count = end_count + 1 where rider_id = '{rider_id}' and driving_time like '{group_driving_time}%';
-                """
-        cursor.execute(sql_update_endcount)
+        sql.update_end_count(rider_id, group_driving_time, cursor)
         conn.commit()
 
         group_min_start_time = group_driving_time
+
     else:
-        sql_update_endcount = f"""
-        update group_all set end_count = end_count + 1 where rider_id = '{rider_id}' and driving_time like '{start_time_str}%';
-                """
-        cursor.execute(sql_update_endcount)
+        sql.update_end_count(rider_id, start_time_str, cursor)
         conn.commit()
 
         group_min_start_time = start_time_str
