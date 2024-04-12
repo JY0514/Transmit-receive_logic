@@ -37,7 +37,7 @@ def send_start():
     cursor = conn.cursor()
 
     # start와 end 구분
-    sql = f"""
+    sql_send = f"""
                select
                   rider_id,
                   oper_id,
@@ -59,7 +59,7 @@ def send_start():
                   logic.s_info
               order by time asc;
           """
-    cursor.execute(sql)
+    cursor.execute(sql_send)
     conn.commit()
     resultu = cursor.fetchall()
 
@@ -69,12 +69,10 @@ def send_start():
         rider_id, oper_id, time, address, company, state = row
         if state == 'start':
             # /reception/start API 호출(운행ID, 기사ID, 시작시간, 주소, 요청사명)
-            # json형태로 가공.
             send_start_api(rider_id, oper_id, time, address, company)
             print("운행시작 호출 : " + str(oper_id))
         else:
             # /reception/end API 호출(운행ID, 기사ID, 종료시간)
-            # json형태로 가공.
             send_end_api(rider_id, oper_id, time)
             print("운행종료 호출 : " + str(oper_id))
 
