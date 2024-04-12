@@ -129,16 +129,11 @@ def end():
             d_amount = total_minutes * 19  # 건마다 들어가는 보험료
 
             # 보험료 산출
-            d_amount, d_amount_n = sql.d_amounts(sql, rider_id, cursor, d_amount, conn, oper_m, group_id, first_start_time,
-                                             end_time_s)
-
-            print(d_amount)
-            print(d_amount_n)
-            # 반환된 값을 사용하여 다른 함수 호출
-            sql.d_amounts(sql, rider_id, cursor, d_amount, conn, oper_m, group_id, first_start_time, end_time_s)
+            d_amount2 = sql.d_amounts(sql, rider_id,cursor, d_amount, conn, oper_m, group_id, first_start_time, end_time_s)
+            print(f"보험료: {d_amount2}")
 
             #  group_info 데이터 insert
-            sql.insert_group_info(group_id, cursor, rider_id,first_start_time ,end_time_s,d_amount,oper_m)
+            sql.insert_group_info(group_id, cursor, rider_id,first_start_time ,end_time_s,d_amount2,oper_m)
 
             conn.commit()
 

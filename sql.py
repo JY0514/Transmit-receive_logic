@@ -113,6 +113,7 @@ def date_check(group_id, cursor):
                                         """
     cursor.execute(sql_date_check)
 
+# group_info업데이트할때 필요함
 def info_update(first_start_time, end_time_s, d_amounts, oper_m, group_id, cursor):
     sql_info_update = f"""
                                                  UPDATE group_info
@@ -121,11 +122,15 @@ def info_update(first_start_time, end_time_s, d_amounts, oper_m, group_id, curso
                                                   WHERE group_id = '{group_id}' 
                                              """
     cursor.execute(sql_info_update)
+    
+# 보험료 산출
 def d_amounts(sql, rider_id,cursor, d_amount, conn, oper_m, group_id, first_start_time, end_time_s):
     # 라이더마다 운행시간, 운행시작시간, 총 보험료 확인
     sql.check_rider_oper(rider_id, cursor)
     conn.commit()
     result = cursor.fetchall()
+    print("넘어왔나?")
+    d_amount_n = None
 
     for row in result:
         date, oper, d = row
@@ -161,8 +166,18 @@ def d_amounts(sql, rider_id,cursor, d_amount, conn, oper_m, group_id, first_star
                 print("운행 시간이 300분이 초과X")
                 sql.info_update(first_start_time, end_time_s, d_amount, oper_m, group_id, cursor)
                 conn.commit()
-            return(d_amount, d_amount_n)
 
+    print(f"d_amount: {d_amount}")
+    print(f"d_amount_n: {d_amount_n}")
+    if d_amount_n is None:
+        return d_amount
+    elif d_amount_n == 0:
+        return d_amount
+    else:
+        return d_amount_n
+
+
+# group_info테이블에 데이터 입력
 def insert_group_info(group_id, cursor, rider_id,first_start_time ,end_time_s,d_amounts,oper_m ):
     sql_info = f"""
                                  INSERT IGNORE INTO logic.group_info (group_id, rider_id,start_time,end_time,d_amount,c_operating, u_date, r_date )
